@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Separator used for console output
+SEPARATOR='--------'
+# User to setup on each node. Will be given sudo access docker access
+USER="walter"
+# Instance size to use
+INSTANCE_SIZE="s-1vcpu-1gb"
+# Region to use
+REGION="sfo2"
+# SSH key fingerprint in DO account to use
+SSH_PUB_KEY_FINGERPRINT="32:ef:28:01:e8:0a:3b:1a:84:f4:bb:c0:f8:cb:08:bc"
+# SSH private key on your machine which matches the public key specified on your DO account
+SSH_PRIV_KEY="~/.ssh/droplets"
+# Image to use
+IMAGE="ubuntu-18-04-x64"
+# Master droplet name
+MASTER="master"
+# Worker names, one worker droplet will be created for each name in this list
+WORKERS="worker-a worker-b"
