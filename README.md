@@ -13,7 +13,7 @@ access-token: YOUR_TOKEN_HERE
 - The following script will setup one master node and worker nodes in your Digital Ocean account based on your ./infrastructure_setup/config file settings. It will then configure each node and install kubernetes with kubeadm
 ```shell
 chmod +x ./infrastructure_setup/setup.sh
-sudo ./infrastructure_setup/setup.sh
+./infrastructure_setup/setup.sh
 ```
 
 ## CLEANUP
