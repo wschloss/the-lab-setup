@@ -12,10 +12,10 @@ verify_doctl() {
 }
 
 # Provisions one droplet
-# usage: provision_droplet $droplet_name
+# usage: provision_droplet $droplet_name $droplet_instance_size
 provision_droplet() {
   command="doctl compute droplet create $1 \
-    --size $INSTANCE_SIZE \
+    --size $2 \
     --image $IMAGE \
     --region $REGION \
     --ssh-keys $SSH_PUB_KEY_FINGERPRINT \
@@ -31,13 +31,13 @@ provision_all_droplets() {
   echo $SEPARATOR
   echo 'Creating master node'
   echo $SEPARATOR
-  provision_droplet $MASTER
+  provision_droplet $MASTER $MASTER_INSTANCE_SIZE
   echo $SEPARATOR
 
   for i in $WORKERS; do
     echo "Creating worker: $i"
     echo $SEPARATOR
-    provision_droplet $i
+    provision_droplet $i $WORKER_INSTANCE_SIZE
     echo $SEPARATOR
   done
 }
@@ -78,10 +78,15 @@ provision_and_apply_firewalls() {
     --outbound-rules 'protocol:icmp,address:0.0.0.0/0,address:::/0 \
       protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 \
       protocol:udp,ports:all,address:0.0.0.0/0,address:::/0'"
-  allow_all_tcp_80_inbound="doctl compute firewall create \
-    --name allow-all-tcp-80-inbound \
+  allow_all_tcp_30501_inbound="doctl compute firewall create \
+    --name allow-all-tcp-30501-inbound \
     --droplet-ids $(collect_worker_ids_by_comma '') \
-    --inbound-rules 'protocol:tcp,ports:80,address:0.0.0.0/0,address:::/0'"
+    --inbound-rules 'protocol:tcp,ports:30501,address:0.0.0.0/0,address:::/0'"
+  allow_admin_tcp_30500_31000_inbound="doctl compute firewall create \
+    --name allow-admin-tcp-30500-31000-inbound \
+    --droplet-ids $(collect_worker_ids_by_comma '') \
+    --inbound-rules 'protocol:tcp,ports:30500,address:$MY_IP/32 \
+      protocol:tcp,ports:31000,address:$MY_IP/32'"
   allow_all_tcp_6443_inbound="doctl compute firewall create \
     --name allow-all-tcp-6443-inbound \
     --droplet-ids $MASTER_ID \
@@ -94,8 +99,12 @@ provision_and_apply_firewalls() {
   eval $allow_all_outbound_and_all_internal_and_inbound_ssh > /dev/null
   echo $SEPARATOR
 
-  echo $allow_all_tcp_80_inbound
-  eval $allow_all_tcp_80_inbound > /dev/null
+  echo $allow_all_tcp_30501_inbound
+  eval $allow_all_tcp_30501_inbound > /dev/null
+  echo $SEPARATOR
+
+  echo $allow_admin_tcp_30500_31000_inbound
+  eval $allow_admin_tcp_30500_31000_inbound > /dev/null
   echo $SEPARATOR
 
   echo $allow_all_tcp_6443_inbound
@@ -141,8 +150,9 @@ install_kubernetes_packages() {
     && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && echo 'deb http://apt.kubernetes.io/ kubernetes-xenial main' > /etc/apt/sources.list.d/kubernetes.list \
     && apt-get update \
-    && apt-get install -y kubelet kubeadm kubectl \
-    && apt-mark hold kubelet kubeadm kubectl"
+    && apt-get install -y kubernetes-cni=0.6.0-00 kubelet kubeadm kubectl \
+    && apt-mark hold kubelet kubeadm kubectl \
+    && sysctl net.bridge.bridge-nf-call-iptables=1"
   echo "ssh -i $SSH_PRIV_KEY root@$1 \"$command\""
   ssh -i $SSH_PRIV_KEY root@$1 "$command"
 }
@@ -161,7 +171,7 @@ install_and_configure_kubernetes() {
 
   echo 'Initializing kubernetes master'
   echo $SEPARATOR
-  command="kubeadm init --pod-network-cidr=192.168.0.0/16"
+  command="kubeadm init"
   echo "ssh -i $SSH_PRIV_KEY root@$MASTER_IP \"$command\""
   ssh -i $SSH_PRIV_KEY root@$MASTER_IP "$command" 
   echo $SEPARATOR
@@ -176,6 +186,28 @@ install_and_configure_kubernetes() {
     ssh -i $SSH_PRIV_KEY root@$i "$command"
     echo $SEPARATOR
   done
+}
+
+# Applies manifests from /manifests directory
+# Requires $MASTER_IP to be set
+apply_base_manifests() {
+  echo 'Applying base manifests'
+  echo $SEPARATOR
+
+  command="ssh -i $SSH_PRIV_KEY root@$MASTER_IP \"mkdir -p /root/manifests/\" \
+    && scp -i $SSH_PRIV_KEY -r ./manifests/pod-overlay/ root@$MASTER_IP:/root/manifests/pod-overlay/ \
+    && scp -i $SSH_PRIV_KEY -r ./manifests/base-pods/ root@$MASTER_IP:/root/manifests/base-pods/"
+  echo $command
+  eval $command
+  echo $SEPARATOR
+
+  command="kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /root/manifests/pod-overlay/ \
+    && sleep 15 \
+    && kubectl --kubeconfig=/etc/kubernetes/admin.conf label node master dedicated=master --overwrite=true \
+    && kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /root/manifests/base-pods/"
+  echo "ssh -i $SSH_PRIV_KEY root@$MASTER_IP \"$command\""
+  ssh -i $SSH_PRIV_KEY root@$MASTER_IP "$command"
+  echo $SEPARATOR
 }
 
 # Copies admin config to local machine ~/.kube/config
@@ -207,6 +239,7 @@ done
 provision_and_apply_firewalls
 configure_all_nodes
 install_and_configure_kubernetes
+apply_base_manifests
 read -p 'Would you like to setup your local kubeconfig (NOTE: this will overwrite ~/.kube/config)? [y/N]: ' setup_kubeconfig
 if [[ "$setup_kubeconfig" =~ ^(yes|y)$ ]]; then
   setup_local_kubeconfig
@@ -215,5 +248,4 @@ fi
 echo
 echo "Your kubernetes cluster is ready for use at $MASTER_IP:6443"
 echo "If you did not setup your local kubeconfig, you will need to manually retrieve / create a kubeconfig file"
-echo "Once you have kubectl installed and a kubeconfig ready, you can proceed to run ./platform_setup/setup.sh"
 echo

@@ -4,8 +4,10 @@
 SEPARATOR='--------'
 # User to setup on each node. Will be given sudo access docker access
 USER="walter"
-# Instance size to use
-INSTANCE_SIZE="s-1vcpu-1gb"
+# Worker instance size to use
+WORKER_INSTANCE_SIZE="s-1vcpu-1gb"
+# Master instance size to use
+MASTER_INSTANCE_SIZE="s-1vcpu-1gb"
 # Region to use
 REGION="sfo2"
 # SSH key fingerprint in DO account to use
@@ -17,4 +19,6 @@ IMAGE="ubuntu-18-04-x64"
 # Master droplet name
 MASTER="master"
 # Worker names, one worker droplet will be created for each name in this list
-WORKERS="worker-a worker-b"
+WORKERS="worker"
+# IP which is allowed to view dev and gogs. Enforced by a DO firewall
+MY_IP="73.153.8.165"

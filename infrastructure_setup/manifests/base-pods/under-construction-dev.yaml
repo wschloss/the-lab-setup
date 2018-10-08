@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: dev
+  labels:
+    app: under-construction-server
+  name: under-construction-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: under-construction-server
+  template:
+    metadata:
+      labels:
+        app: under-construction-server
+    spec:
+      containers:
+      - image: wcschlosser/under-construction-server
+        name: under-construction-server
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: under-construction-service
+  namespace: dev
+  labels:
+    app: under-construction-server
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30500
+      protocol: TCP
+  selector:
+    app: under-construction-server
